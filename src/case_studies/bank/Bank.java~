@@ -1,0 +1,282 @@
+package com.baig;
+
+import java.util.Map;
+import org.apache.flink.util.Collector;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.api.common.state.MapStateDescriptor;
+import org.apache.flink.api.common.state.ValueStateDescriptor;
+import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.RichFlatMapFunction;
+import org.apache.flink.streaming.api.datastream.BroadcastStream;
+import org.apache.flink.streaming.api.functions.ProcessFunction.Context;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction;
+import org.apache.flink.streaming.api.functions.co.BroadcastProcessFunction;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
+import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.api.common.state.ValueState;
+import org.apache.flink.api.common.typeinfo.TypeHint;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.functions.co.BroadcastProcessFunction.ReadOnlyContext;
+
+public class Bank {
+
+    public static void main(String[] args) throws Exception {
+	final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+	// transaction data keyed by customer_id
+	DataStream<Tuple2<String, String>> data = env.socketTextStream("localhost", 9090)
+	    .map(new MapFunction<String, Tuple2<String, String>>(){
+		    public Tuple2<String, String> map(String value){
+			String[] words = value.split(",");
+			return new Tuple2<String, String>(words[3], value);
+		    }
+		});
+
+	/** 
+	 * Get alarmed customers data and broadcast it so that all streamed data can be
+	 * evaluated against alarmed customers data
+	 */
+	DataStream<AlarmedCustomer> alarmedCustomers =
+	    env.readTextFile("/Users/furqan/Workspace/flink/bank_data/alarmed_customers.txt")
+	    .map(new MapFunction<String, AlarmedCustomer>(){
+		    public AlarmedCustomer map(String value){
+			return new AlarmedCustomer(value);
+		    }
+		});
+	MapStateDescriptor<String, AlarmedCustomer> alarmedCustStateDescriptor =
+	    new MapStateDescriptor<String, AlarmedCustomer>("alarmed_customers",
+				     BasicTypeInfo.STRING_TYPE_INFO,
+				     Types.POJO(AlarmedCustomer.class));
+
+	// broadcast alarmed customer data
+	BroadcastStream<AlarmedCustomer> alarmedCustBroadcast =
+	    alarmedCustomers.broadcast(alarmedCustStateDescriptor);
+	
+	/** 
+	 * Get lost card data and broadcast it so that all streamed data can be
+	 * evaluated against it and notified
+	 */
+	DataStream<LostCard> lostCards =
+	    env.readTextFile("/Users/furqan/Workspace/flink/bank_data/lost_cards.txt")
+	    .map(new MapFunction<String, LostCard>(){
+		    public LostCard map(String value){
+			return new LostCard(value);
+		    }
+		});
+	MapStateDescriptor<String, LostCard> lostCardStateDescriptor =
+	    new MapStateDescriptor<String, LostCard>("lost_cards",
+				     BasicTypeInfo.STRING_TYPE_INFO,
+				     Types.POJO(LostCard.class));
+
+	// broadcast lost card data
+	BroadcastStream<LostCard> lostCardBroadcast = lostCards.broadcast(lostCardStateDescriptor);
+
+	/*
+	 * (1) Test incoming data against alarmed customers
+	 * (2) Test incoming data against lost cards
+	 * (3) Number of transaction by the customer is more than 10
+	 * (4) Transaction city changed frequently
+	 */
+	
+	DataStream<Tuple2<String, String>> alarmedCustTransactions = data
+	    .keyBy(0)
+	    // (1) Check against alarmed customers
+	    .connect(alarmedCustBroadcast)
+	    .process(new AlarmedCustEvaluator());
+
+	DataStream<Tuple2<String, String>> lostCardTransactions = data
+	    // (2) Check against lost cards
+	    .keyBy(0)
+	    .connect(lostCardBroadcast)
+	    .process(new LostCardEvaluator());
+
+	DataStream<Tuple2<String, String>> excessiveTransactions = data
+	    // (3) More than 10 transactions
+	    .map(new MapFunction<Tuple2<String, String>, Tuple3<String, String, Integer>>(){
+		    public Tuple3<String, String, Integer> map(Tuple2<String, String> value){
+			return new Tuple3<String, String, Integer>(value.f0, value.f1, 1);
+		    }
+		})
+	    .keyBy(0)
+	    .timeWindow(Time.minutes(10))
+	    .sum(2)
+	    .flatMap(new FilterAndMapMoreThan10());
+
+	
+	DataStream<Tuple2<String, String>> freqCityChangeTransactions = data
+	    // (4) Frequenct transaction city changes
+	    .keyBy(0)
+	    .flatMap(new TrackCityChanges());
+	    // .timeWindow(Time.seconds(5));
+	    // .process(new MyProcessWindowFunction());
+
+	DataStream<Tuple2<String, String>> flaggedTxn =
+	    alarmedCustTransactions.union(lostCardTransactions,
+					  excessiveTransactions,
+					  freqCityChangeTransactions);
+
+
+	flaggedTxn.writeAsText("/Users/furqan/Workspace/flink/bank_data/flagged_txn.txt");
+
+	// execute program
+	env.execute("Streaming Bank");
+    }
+
+    public static class MyProcessWindowFunction
+	extends ProcessWindowFunction<Tuple2<String, String>, Tuple2<String, String>, String, TimeWindow> {
+	
+	public void process(String key,
+			    Context context,
+			    Iterable<Tuple2<String, String>> input,
+			    Collector<Tuple2<String, String>> out) {
+
+	}
+    }
+    
+    public static class TrackCityChanges
+	extends RichFlatMapFunction<Tuple2<String, String>, Tuple2<String, String>>
+    {
+	// Tuple<Last transaction city, total city changes>
+	private transient ValueState<Tuple2<String, Integer>> txnState;
+
+	public void flatMap(Tuple2<String, String> input,
+			    Collector<Tuple2<String, String>> out) throws Exception {
+
+	    Tuple2<String, Integer> currState = txnState.value();
+
+	    // extract city from transaction
+	    String city = input.f1.split(",")[2].toLowerCase();
+
+	    if (currState.f0.isEmpty())
+		currState.f0 = city;
+	    else {
+		// check if city changed
+		if (!currState.f0.equals(city)){
+		    currState.f0 = city;
+		    currState.f1 += 1;
+		}
+	    }
+
+	    txnState.update(currState);
+
+	    // if city is changed more than 2 times, flag and emit
+	    if (currState.f1 > 1){
+		out.collect(new Tuple2<String, String>("__ALARM__", input + "marked for FREQUENT city changes"));
+		
+	    }
+	}
+	
+	public void open(Configuration config) {
+	    ValueStateDescriptor<Tuple2<String, Integer>> descriptor =
+                new ValueStateDescriptor<Tuple2<String, Integer>>(
+					   "txn_state",
+					   TypeInformation.of(new TypeHint<Tuple2<String, Integer>>() {}),
+					   Tuple2.of("", 0));
+	    txnState = getRuntimeContext().getState(descriptor);
+	}
+	
+    }
+    
+    public static class FilterAndMapMoreThan10
+	implements FlatMapFunction<Tuple3<String, String, Integer>, Tuple2<String, String>>
+    {
+	public void flatMap(Tuple3<String, String, Integer> value,
+			    Collector<Tuple2<String, String>> out){
+	    if (value.f2 > 10){
+		out.collect(new Tuple2<String, String>("__ALARM__", value + " marked for >10 TXNs"));
+	    }
+	}
+    }
+    
+    public static class AlarmedCustEvaluator
+    //extends BroadcastProcessFunction<String, AlarmedCustomer, String>{
+	extends KeyedBroadcastProcessFunction<String, Tuple2<String, String>, AlarmedCustomer, Tuple2<String, String>>{
+
+	private final MapStateDescriptor<String, AlarmedCustomer> alarmedCustStateDescriptor =
+	    new MapStateDescriptor<String, AlarmedCustomer>("alarmed_customers",
+							    BasicTypeInfo.STRING_TYPE_INFO,
+							    Types.POJO(AlarmedCustomer.class));
+
+	public void processElement(Tuple2<String, String> value,
+				   ReadOnlyContext ctx,
+				   Collector<Tuple2<String, String>> out)
+	    throws Exception
+	{
+
+	    for (Map.Entry<String, AlarmedCustomer> custEntry: ctx.getBroadcastState(alarmedCustStateDescriptor).immutableEntries()) {
+
+		final String alarmedCustId = custEntry.getKey();
+		final AlarmedCustomer cust = custEntry.getValue();
+
+		// get customer_id of current transaction
+		final String tId = value.f1.split(",")[3];
+		if (tId.equals(alarmedCustId)){
+		    out.collect(new Tuple2<String, String>("____ALARM___",
+							   "Transaction: " + value + " is by an ALARMED customer"));
+		}
+		// keep original data as well since we want to further process it
+		//out.collect(value);
+	    }
+	}
+
+	public void processBroadcastElement(AlarmedCustomer cust,
+					    Context ctx,
+					    Collector<Tuple2<String, String>> out)
+	    throws Exception {
+	    ctx.getBroadcastState(alarmedCustStateDescriptor).put(cust.id, cust);
+	}
+
+    }
+
+    public static class LostCardEvaluator
+    //extends BroadcastProcessFunction<String, LostCard, String>{
+	extends KeyedBroadcastProcessFunction<String, Tuple2<String, String>, LostCard, Tuple2<String, String>>{
+
+	private final MapStateDescriptor<String, LostCard> lostCardStateDescriptor =
+	    new MapStateDescriptor<String, LostCard>("lost_cards",
+						     BasicTypeInfo.STRING_TYPE_INFO,
+						     Types.POJO(LostCard.class));
+
+	public void processElement(Tuple2<String, String> value,
+				   ReadOnlyContext ctx,
+				   Collector<Tuple2<String, String>> out)
+	    throws Exception
+	{
+
+	    for (Map.Entry<String, LostCard> cardEntry: ctx.getBroadcastState(lostCardStateDescriptor).immutableEntries()) {
+		
+		final String lostCardId = cardEntry.getKey();
+		final LostCard card = cardEntry.getValue();
+		
+		// get card_id of current transaction
+		final String cId = value.f1.split(",")[5];
+		if (cId.equals(lostCardId)){
+		    out.collect(new Tuple2<String, String>("__ALARM__",
+							   "Transaction: " + value + " issued via LOST card"));
+		}
+		// keep original data as well since we want to further process it
+		//out.collect(value);
+	    }
+	}
+
+	public void processBroadcastElement(LostCard card,
+					    Context ctx,
+					    Collector<Tuple2<String, String>> out)
+	    throws Exception {
+	    ctx.getBroadcastState(lostCardStateDescriptor).put(card.id, card);
+	}
+
+    }
+
+}

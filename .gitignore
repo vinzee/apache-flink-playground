@@ -1,3 +1,12 @@
+.idea/
+target/
+*.iml
+.DS_Store
+*/.*
+.project
+.settings
+
+
 # Compiled class file
 *.class
 
