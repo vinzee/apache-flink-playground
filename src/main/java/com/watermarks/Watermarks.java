@@ -23,25 +23,18 @@ public class Watermarks {
 
         DataStream<String> data = env.socketTextStream("localhost", 9090);
 
-        DataStream<Tuple2<Long, String>> sum = data.map(new MapFunction<String, Tuple2<Long, String>>() {
-            public Tuple2<Long, String> map(String s) {
-                String[] words = s.split(",");
-                return new Tuple2<Long, String>(Long.parseLong(words[0]), words[1]);
-            }
+        DataStream<Tuple2<Long, String>> sum = data.map((MapFunction<String, Tuple2<Long, String>>) s -> {
+            String[] words = s.split(",");
+            return new Tuple2<>(Long.parseLong(words[0]), words[1]);
         })
-
                 .assignTimestampsAndWatermarks(new DemoWatermark())
-
                 .windowAll(EventTimeSessionWindows.withGap(Time.seconds(10)))
-
-                .reduce(new ReduceFunction<Tuple2<Long, String>>() {
-                    public Tuple2<Long, String> reduce(Tuple2<Long, String> t1, Tuple2<Long, String> t2) {
-                        int num1 = Integer.parseInt(t1.f1);
-                        int num2 = Integer.parseInt(t2.f1);
-                        int sum = num1 + num2;
-                        Timestamp t = new Timestamp(System.currentTimeMillis());
-                        return new Tuple2<Long, String>(t.getTime(), "" + sum);
-                    }
+                .reduce((ReduceFunction<Tuple2<Long, String>>) (t1, t2) -> {
+                    int num1 = Integer.parseInt(t1.f1);
+                    int num2 = Integer.parseInt(t2.f1);
+                    int sum1 = num1 + num2;
+                    Timestamp t = new Timestamp(System.currentTimeMillis());
+                    return new Tuple2<>(t.getTime(), "" + sum1);
                 });
         sum.writeAsText("/home/jivesh/window");
 
@@ -51,15 +44,16 @@ public class Watermarks {
 
     public static class DemoWatermark implements AssignerWithPeriodicWatermarks<Tuple2<Long, String>> {
         private final long allowedlatetime = 3500; // 3.5 seconds
-
         private long currentMaxTimestamp = 0;
 
+        @Override
         public long extractTimestamp(Tuple2<Long, String> element, long previousElementTimestamp) {
             long timestamp = element.f0;
             currentMaxTimestamp = Math.max(timestamp, currentMaxTimestamp);
             return timestamp;
         }
 
+        @Override
         public Watermark getCurrentWatermark() {
             // return the watermark as current highest timestamp minus the out-of-orderness bound
             return new Watermark(currentMaxTimestamp - allowedlatetime);

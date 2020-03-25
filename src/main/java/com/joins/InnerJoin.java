@@ -11,12 +11,8 @@ import org.apache.flink.api.java.utils.ParameterTool;
 @SuppressWarnings("serial")
 public class InnerJoin {
     public static void main(String[] args) throws Exception {
-
-        // set up the execution environment
         final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
-
         final ParameterTool params = ParameterTool.fromArgs(args);
-        // make parameters available in the web interface
         env.getConfig().setGlobalJobParameters(params);
 
         // Read person file and generate tuples out of each string read

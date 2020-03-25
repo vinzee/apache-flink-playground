@@ -19,12 +19,9 @@ public class GraphApiExample {
 
         /* format: user, friend */
         DataSet<Tuple2<String, String>> friends = env.readTextFile("/home/jivesh/graphnew")
-                .map(new MapFunction<String, Tuple2<String, String>>() {
-                    @Override
-                    public Tuple2<String, String> map(String value) {
-                        String[] words = value.split("\\s+");
-                        return new Tuple2<String, String>(words[0], words[1]);
-                    }
+                .map((MapFunction<String, Tuple2<String, String>>) value -> {
+                    String[] words = value.split("\\s+");
+                    return new Tuple2<>(words[0], words[1]);
                 });
 
         /* prepare normal dataset to edges for graph */
@@ -38,17 +35,22 @@ public class GraphApiExample {
         });
 
         /* create graph from edges dataset */
-        Graph<String, NullValue, NullValue> friendsGraphs = Graph.fromDataSet(edges, env);
+        Graph<String, NullValue, NullValue> friendsGraphs =
+                Graph.fromDataSet(edges, env);
 
-        Graph<String, NullValue, Double> weightedfriendsGraph = friendsGraphs.mapEdges((MapFunction<Edge<String, NullValue>, Double>) edge -> 1.0);
+        Graph<String, NullValue, Double> weightedfriendsGraph =
+                friendsGraphs.mapEdges((MapFunction<Edge<String, NullValue>, Double>) edge -> 1.0);
 
         /* get all friend of friends of friends of....*/
-        SingleSourceShortestPaths<String, NullValue> s1 = new SingleSourceShortestPaths<String, NullValue>(user1Name, 10);
+        SingleSourceShortestPaths<String, NullValue> s1 =
+                new SingleSourceShortestPaths<>(user1Name, 10);
 
-        DataSet<Vertex<String, Double>> result = s1.run(weightedfriendsGraph);
+        DataSet<Vertex<String, Double>> result =
+                s1.run(weightedfriendsGraph);
 
         /* get only friends of friends for Vipul */
-        DataSet<Vertex<String, Double>> fOfUser1 = result.filter((FilterFunction<Vertex<String, Double>>) value -> value.f1 == 2);
+        DataSet<Vertex<String, Double>> fOfUser1 =
+                result.filter((FilterFunction<Vertex<String, Double>>) value -> value.f1 == 2);
 
         fOfUser1.writeAsText("/home/jivesh/result1.txt");
 

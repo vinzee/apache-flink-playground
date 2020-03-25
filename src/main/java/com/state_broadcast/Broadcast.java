@@ -55,7 +55,7 @@ public class Broadcast {
             }
 
             countState.update(currCount + 1);       // dept    , current sum
-            out.collect(new Tuple2<String, Integer>(value.f0, currCount + 1));
+            out.collect(new Tuple2<>(value.f0, currCount + 1));
         }
 
         @Override

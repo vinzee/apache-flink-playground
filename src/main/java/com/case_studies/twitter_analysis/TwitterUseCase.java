@@ -56,24 +56,17 @@ public class TwitterUseCase {
     }
 
     public static class TweetParser implements MapFunction<String, JsonNode> {
-
         @Override
         public JsonNode map(String value) throws Exception {
             ObjectMapper jsonParser = new ObjectMapper();
-
-            JsonNode node = jsonParser.readValue(value, JsonNode.class);
-            return node;
+            return jsonParser.readValue(value, JsonNode.class);
         }
     }
 
     public static class EnglishFilter implements FilterFunction<JsonNode> {
         @Override
         public boolean filter(JsonNode node) {
-            boolean isEnglish =
-                    node.has("user") &&
-                            node.get("user").has("lang") &&
-                            node.get("user").get("lang").asText().equals("en");
-            return isEnglish;
+            return node.has("user") && node.get("user").has("lang") && node.get("user").get("lang").asText().equals("en");
         }
     }
 
@@ -86,11 +79,9 @@ public class TwitterUseCase {
 
         @Override
         public boolean filter(JsonNode node) {
-            if (!node.has("text"))
-                return false;
-            // keep tweets metioning keywords
+            if (!node.has("text")) return false;
+            // keep tweets mentioning keywords
             String tweet = node.get("text").asText().toLowerCase();
-
             return filterKeyWords.parallelStream().anyMatch(tweet::contains);
         }
     }
@@ -114,7 +105,7 @@ public class TwitterUseCase {
                 else
                     source = "Other";
             }
-            return new Tuple2<String, JsonNode>(source, node);     // returns  (Android,tweet)
+            return new Tuple2<>(source, node);     // returns  (Android,tweet)
         }
     }
 
@@ -124,7 +115,7 @@ public class TwitterUseCase {
             JsonNode node = value.f1;
             String timestamp = node.get("created_at").asText(); //Thu May 10 15:24:15 +0000 2018
             String hour = timestamp.split(" ")[3].split(":")[0] + "th hour";
-            return new Tuple3<String, String, Integer>(value.f0, hour, 1);
+            return new Tuple3<>(value.f0, hour, 1);
         }
     }
 }

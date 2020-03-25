@@ -22,44 +22,31 @@ import java.util.Map;
 
 public class Bank {
     public static final MapStateDescriptor<String, AlarmedCustomer> alarmedCustStateDescriptor =
-            new MapStateDescriptor<String, AlarmedCustomer>("alarmed_customers", BasicTypeInfo.STRING_TYPE_INFO, Types.POJO(AlarmedCustomer.class));
+            new MapStateDescriptor<>("alarmed_customers", BasicTypeInfo.STRING_TYPE_INFO, Types.POJO(AlarmedCustomer.class));
 
     public static final MapStateDescriptor<String, LostCard> lostCardStateDescriptor =
-            new MapStateDescriptor<String, LostCard>("lost_cards", BasicTypeInfo.STRING_TYPE_INFO, Types.POJO(LostCard.class));
+            new MapStateDescriptor<>("lost_cards", BasicTypeInfo.STRING_TYPE_INFO, Types.POJO(LostCard.class));
 
     public static void main(String[] args) throws Exception {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         DataStream<AlarmedCustomer> alarmedCustomers = env.readTextFile("/home/jivesh/alarmed_cust.txt")
-                .map(new MapFunction<String, AlarmedCustomer>() {
-                    @Override
-                    public AlarmedCustomer map(String value) {
-                        return new AlarmedCustomer(value);
-                    }
-                });
+                .map((MapFunction<String, AlarmedCustomer>) AlarmedCustomer::new);
         // broadcast alarmed customer data
         BroadcastStream<AlarmedCustomer> alarmedCustBroadcast = alarmedCustomers.broadcast(alarmedCustStateDescriptor);
 
         DataStream<LostCard> lostCards = env.readTextFile("/home/jivesh/lost_cards.txt")
-                .map(new MapFunction<String, LostCard>() {
-                    @Override
-                    public LostCard map(String value) {
-                        return new LostCard(value);
-                    }
-                });
+                .map((MapFunction<String, LostCard>) LostCard::new);
 
         // broadcast lost card data
         BroadcastStream<LostCard> lostCardBroadcast = lostCards.broadcast(lostCardStateDescriptor);
 
         // transaction data keyed by customer_id
         DataStream<Tuple2<String, String>> data = env.socketTextStream("localhost", 9090)
-                .map(new MapFunction<String, Tuple2<String, String>>() {
-                    @Override
-                    public Tuple2<String, String> map(String value) {
-                        String[] words = value.split(",");
+                .map((MapFunction<String, Tuple2<String, String>>) value -> {
+                    String[] words = value.split(",");
 
-                        return new Tuple2<String, String>(words[3], value); //{(id_347hfx) (HFXR347924,2018-06-14 23:32:23,Chandigarh,id_347hfx,hf98678167,123302773033,774
-                    }
+                    return new Tuple2<>(words[3], value); //{(id_347hfx) (HFXR347924,2018-06-14 23:32:23,Chandigarh,id_347hfx,hf98678167,123302773033,774
                 });
 
         // (1) Check against alarmed customers
@@ -76,12 +63,7 @@ public class Bank {
 
         DataStream<Tuple2<String, String>> excessiveTransactions = data
                 // (3) More than 10 transactions check
-                .map(new MapFunction<Tuple2<String, String>, Tuple3<String, String, Integer>>() {
-                    @Override
-                    public Tuple3<String, String, Integer> map(Tuple2<String, String> value) {
-                        return new Tuple3<String, String, Integer>(value.f0, value.f1, 1);
-                    }
-                })
+                .map((MapFunction<Tuple2<String, String>, Tuple3<String, String, Integer>>) value -> new Tuple3<>(value.f0, value.f1, 1))
                 .keyBy(0)
                 .window(TumblingProcessingTimeWindows.of(Time.seconds(10)))
                 .sum(2)
@@ -89,12 +71,7 @@ public class Bank {
 
         DataStream<Tuple2<String, String>> freqCityChangeTransactions = data
                 //.keyBy(t -> t.f0)
-                .keyBy(new KeySelector<Tuple2<String, String>, String>() {
-                    @Override
-                    public String getKey(Tuple2<String, String> value) {
-                        return value.f0;
-                    }
-                })
+                .keyBy((KeySelector<Tuple2<String, String>, String>) value -> value.f0)
                 .window(TumblingProcessingTimeWindows.of(Time.seconds(10)))
                 .process(new Citychange());
 
@@ -124,7 +101,7 @@ public class Bank {
                 }
 
                 if (changeCount >= 2) {
-                    out.collect(new Tuple2<String, String>("__ALARM__", element + "marked for FREQUENT city changes"));
+                    out.collect(new Tuple2<>("__ALARM__", element + "marked for FREQUENT city changes"));
                 }
             }
         }
@@ -134,7 +111,7 @@ public class Bank {
         @Override
         public void flatMap(Tuple3<String, String, Integer> value, Collector<Tuple2<String, String>> out) {
             if (value.f2 > 10) {
-                out.collect(new Tuple2<String, String>("__ALARM__", value + " marked for >10 TXNs"));
+                out.collect(new Tuple2<>("__ALARM__", value + " marked for >10 TXNs"));
             }
         }
     }
@@ -151,7 +128,7 @@ public class Bank {
                 // get customer_id of current transaction
                 final String tId = value.f1.split(",")[3];
                 if (tId.equals(alarmedCustId)) {
-                    out.collect(new Tuple2<String, String>("____ALARM___", "Transaction: " + value + " is by an ALARMED customer"));
+                    out.collect(new Tuple2<>("____ALARM___", "Transaction: " + value + " is by an ALARMED customer"));
                 }
             }
         }
@@ -172,7 +149,7 @@ public class Bank {
                 // get card_id of current transaction
                 final String cId = value.f1.split(",")[5];
                 if (cId.equals(lostCardId)) {
-                    out.collect(new Tuple2<String, String>("__ALARM__", "Transaction: " + value + " issued via LOST card"));
+                    out.collect(new Tuple2<>("__ALARM__", "Transaction: " + value + " issued via LOST card"));
                 }
             }
         }

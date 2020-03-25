@@ -22,14 +22,10 @@ public class SlidingEvent {
 
         DataStream<String> data = env.socketTextStream("localhost", 9090);
 
-        DataStream<Tuple2<Long, String>> sum = data.map(new MapFunction<String, Tuple2<Long, String>>() {
-            @Override
-            public Tuple2<Long, String> map(String s) {
-                String[] words = s.split(",");
-                return new Tuple2<Long, String>(Long.parseLong(words[0]), words[1]);
-            }
+        DataStream<Tuple2<Long, String>> sum = data.map((MapFunction<String, Tuple2<Long, String>>) s -> {
+            String[] words = s.split(",");
+            return new Tuple2<>(Long.parseLong(words[0]), words[1]);
         })
-
                 .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple2<Long, String>>() {
                     @Override
                     public long extractAscendingTimestamp(Tuple2<Long, String> t) {
@@ -37,15 +33,12 @@ public class SlidingEvent {
                     }
                 })
                 .windowAll(SlidingEventTimeWindows.of(Time.seconds(4), Time.seconds(2)))
-                .reduce(new ReduceFunction<Tuple2<Long, String>>() {
-                    @Override
-                    public Tuple2<Long, String> reduce(Tuple2<Long, String> t1, Tuple2<Long, String> t2) {
-                        int num1 = Integer.parseInt(t1.f1);
-                        int num2 = Integer.parseInt(t2.f1);
-                        int sum = num1 + num2;
-                        Timestamp t = new Timestamp(System.currentTimeMillis());
-                        return new Tuple2<Long, String>(t.getTime(), "" + sum);
-                    }
+                .reduce((ReduceFunction<Tuple2<Long, String>>) (t1, t2) -> {
+                    int num1 = Integer.parseInt(t1.f1);
+                    int num2 = Integer.parseInt(t2.f1);
+                    int sum1 = num1 + num2;
+                    Timestamp t = new Timestamp(System.currentTimeMillis());
+                    return new Tuple2<>(t.getTime(), "" + sum1);
                 });
         sum.writeAsText("/home/jivesh/window");
 

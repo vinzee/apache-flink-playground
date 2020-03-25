@@ -38,8 +38,7 @@ public class SessionProcessing {
         @Override
         public Tuple5<String, String, String, Integer, Integer> reduce(Tuple5<String, String, String, Integer, Integer> current,
                                                                        Tuple5<String, String, String, Integer, Integer> pre_result) {
-            return new Tuple5<String, String, String, Integer, Integer>(current.f0,
-                    current.f1, current.f2, current.f3 + pre_result.f3, current.f4 + pre_result.f4);
+            return new Tuple5<>(current.f0, current.f1, current.f2, current.f3 + pre_result.f3, current.f4 + pre_result.f4);
         }
     }
 
@@ -50,7 +49,7 @@ public class SessionProcessing {
             String[] words = value.split(",");                             // words = [{01-06-2018},{June},{Category5},{Bat}.{12}
             // ignore timestamp, we don't need it for any calculations
             //Long timestamp = Long.parseLong(words[5]);
-            return new Tuple5<String, String, String, Integer, Integer>(words[1], words[2], words[3], Integer.parseInt(words[4]), 1);
+            return new Tuple5<>(words[1], words[2], words[3], Integer.parseInt(words[4]), 1);
         }                                                            //    June    Category5      Bat                      12
     }
 }

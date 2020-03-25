@@ -19,15 +19,11 @@ public class ListStateDemo {
 
         DataStream<String> data = env.socketTextStream("localhost", 9090);
 
-        DataStream<Tuple2<String, Long>> sum = data.map(new MapFunction<String, Tuple2<Long, String>>() {
-            @Override
-            public Tuple2<Long, String> map(String s) {
-                String[] words = s.split(",");
-                return new Tuple2<Long, String>(Long.parseLong(words[0]), words[1]);
-            }
-        })
-                .keyBy(0)
-                .flatMap(new StatefulMap());
+        DataStream<Tuple2<String, Long>> sum = data.map((MapFunction<String, Tuple2<Long, String>>) s -> {
+            String[] words = s.split(",");
+            return new Tuple2<>(Long.parseLong(words[0]), words[1]);
+        }).keyBy(0).flatMap(new StatefulMap());
+
         sum.writeAsText("/home/jivesh/state2");
 
         // execute program
@@ -52,11 +48,11 @@ public class ListStateDemo {
                 Long sum = 0L;
                 String numbersStr = "";
                 for (Long number : numbers.get()) {
-                    numbersStr = numbersStr + " " + number;
+                    numbersStr += " " + number;
                     sum = sum + number;
                 }
                 /* emit sum of last 10 elements */
-                out.collect(new Tuple2<String, Long>(numbersStr, sum));
+                out.collect(new Tuple2<>(numbersStr, sum));
                 /* clear value */
                 count.clear();
                 numbers.clear();
@@ -65,10 +61,10 @@ public class ListStateDemo {
 
         @Override
         public void open(Configuration conf) {
-            ListStateDescriptor<Long> listDesc = new ListStateDescriptor<Long>("numbers", Long.class);
+            ListStateDescriptor<Long> listDesc = new ListStateDescriptor<>("numbers", Long.class);
             numbers = getRuntimeContext().getListState(listDesc);
 
-            ValueStateDescriptor<Long> descriptor2 = new ValueStateDescriptor<Long>("count", Long.class, 0L);
+            ValueStateDescriptor<Long> descriptor2 = new ValueStateDescriptor<>("count", Long.class, 0L);
             count = getRuntimeContext().getState(descriptor2);
         }
     }
