@@ -28,7 +28,7 @@ public class TwitterDataIngestion {
 
         DataStream<String> twitterData = env.addSource(new TwitterSource(twitterCredentials));
 
-        twitterData.flatMap(new TweetParser()).writeAsText("/home/jivesh/tweet");
+        twitterData.flatMap(new TweetParser()).print();
 
         env.execute("Twitter Example");
     }

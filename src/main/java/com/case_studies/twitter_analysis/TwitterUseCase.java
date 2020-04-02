@@ -35,20 +35,15 @@ public class TwitterUseCase {
 
         DataStream<String> twitterData = env.addSource(new TwitterSource(twitterCredentials));
 
-        DataStream<JsonNode> parsedData = twitterData.map(new TweetParser());
-
-        DataStream<JsonNode> englishTweets = parsedData.filter(new EnglishFilter());
-
-        DataStream<JsonNode> RelevantTweets = englishTweets.filter(new FilterByKeyWords(keywords));
-
-        // Format: <source, tweetObject>
-        DataStream<Tuple2<String, JsonNode>> tweetsBySource = RelevantTweets.map(new ExtractTweetSource());
-
-        // Format: <source, hourOfDay, 1>
-        tweetsBySource.map(new ExtractHourOfDay())
+        twitterData
+                .map(new TweetParser())
+                .filter(new EnglishFilter())
+                .filter(new FilterByKeyWords(keywords))
+                .map(new ExtractTweetSource())
+                .map(new ExtractHourOfDay())
                 .keyBy(0, 1) // groupBy source and hour
                 .sum(2)     // sum for each category i.e. Number of tweets from 'source' in given 'hour'
-                .writeAsText("/home/jivesh/tweets.txt");
+                .print();
         // e.g. 100 tweets from Android about Pollution in 16th hour of day
         //      150 tweets from Apple devices about Pollution in 20th hour of day etc.
 
@@ -98,7 +93,7 @@ public class TwitterUseCase {
                     source = "AppleMac";
                 else if (sourceHtml.contains("android"))
                     source = "Android";
-                else if (sourceHtml.contains("BlackBerry"))
+                else if (sourceHtml.contains("blackBerry"))
                     source = "BlackBerry";
                 else if (sourceHtml.contains("web"))
                     source = "Web";

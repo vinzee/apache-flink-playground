@@ -78,7 +78,7 @@ public class Bank {
         DataStream<Tuple2<String, String>> AllFlaggedTxn =
                 alarmedCustTransactions.union(lostCardTransactions, excessiveTransactions, freqCityChangeTransactions);
 
-        AllFlaggedTxn.writeAsText("/home/jivesh/flagged_transaction");
+        AllFlaggedTxn.print();
         // execute program
         env.execute("Streaming Bank");
     }

@@ -3,6 +3,8 @@
 ### Important Links
 - https://mvnrepository.com/artifact/org.apache.flink
 - https://ci.apache.org/projects/flink/flink-docs-release-1.9/getting-started/docker-playgrounds/flink-operations-playground.html
+- ververica Flink training - https://training.ververica.com/
+- NYC Taxi Data Repo - https://training.ververica.com/setup/taxiData.html
 
 ### Commands
 ```sh

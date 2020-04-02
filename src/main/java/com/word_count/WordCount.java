@@ -18,7 +18,7 @@ public class WordCount {
         DataSet<String> text = env.readTextFile(workingDirectory + "/src/main/java/com/word_count/words.txt");
         DataSet<String> filtered = text.filter((FilterFunction<String>) value -> value.startsWith("N"));
         DataSet<Tuple2<String, Integer>> tokenized = filtered.map(new Tokenizer());
-        DataSet<Tuple2<String, Integer>> counts = tokenized.groupBy(new int[]{0}).sum(1);
+        DataSet<Tuple2<String, Integer>> counts = tokenized.groupBy(0).sum(1);
 
         counts.print();
         System.out.println("Finish print");
@@ -31,6 +31,7 @@ public class WordCount {
     }
 
     public static final class Tokenizer implements MapFunction<String, Tuple2<String, Integer>> {
+        @Override
         public Tuple2<String, Integer> map(String value) {
             return new Tuple2<>(value, 1);
         }

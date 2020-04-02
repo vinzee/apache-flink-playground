@@ -52,7 +52,7 @@ public class GraphApiExample {
         DataSet<Vertex<String, Double>> fOfUser1 =
                 result.filter((FilterFunction<Vertex<String, Double>>) value -> value.f1 == 2);
 
-        fOfUser1.writeAsText("/home/jivesh/result1.txt");
+        fOfUser1.print();
 
         env.execute("Graph API Example");
     }

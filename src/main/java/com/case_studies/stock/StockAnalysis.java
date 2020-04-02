@@ -9,7 +9,7 @@ import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.AscendingTimestampExtractor;
+import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
@@ -23,14 +23,12 @@ public class StockAnalysis {
     public static void main(String[] args) throws Exception {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        DataStream<Tuple5<String, String, String, Double, Integer>> data = env.readTextFile("/home/jivesh/FUTURES_TRADES.txt")
-                .map(new MapFunction<String, Tuple5<String, String, String, Double, Integer>>() {
-                    @Override
-                    public Tuple5<String, String, String, Double, Integer> map(String value) {
-                        String[] words = value.split(",");
-                        // date,    time,     Name,       trade,                      volume
-                        return new Tuple5<String, String, String, Double, Integer>(words[0], words[1], "XYZ", Double.parseDouble(words[2]), Integer.parseInt(words[3]));
-                    }
+        DataStream<Tuple5<String, String, String, Double, Integer>> data = env
+                .readTextFile("/home/jivesh/FUTURES_TRADES.txt")
+                .map((MapFunction<String, Tuple5<String, String, String, Double, Integer>>) value -> {
+                    String[] words = value.split(",");
+                    // date,    time,     Name,       trade,                      volume
+                    return new Tuple5<>(words[0], words[1], "XYZ", Double.parseDouble(words[2]), Integer.parseInt(words[3]));
                 })
                 .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple5<String, String, String, Double, Integer>>() {
                     private final SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
@@ -48,16 +46,18 @@ public class StockAnalysis {
                 });
 
         // Compute per window statistics
-        DataStream<String> change = data.keyBy((KeySelector<Tuple5<String, String, String, Double, Integer>, String>) value -> value.f2)
+        DataStream<String> change = data
+                .keyBy((KeySelector<Tuple5<String, String, String, Double, Integer>, String>) value -> value.f2)
                 .window(TumblingEventTimeWindows.of(Time.minutes(1)))
                 .process(new TrackChange());
-        change.writeAsText("/home/jivesh/Ist report.txt");
+        change.print();
 
         // Alert when price change from one window to another is more than threshold
-        DataStream<String> largeDelta = data.keyBy((KeySelector<Tuple5<String, String, String, Double, Integer>, String>) value -> value.f2)
+        DataStream<String> largeDelta = data
+                .keyBy((KeySelector<Tuple5<String, String, String, Double, Integer>, String>) value -> value.f2)
                 .window(TumblingEventTimeWindows.of(Time.minutes(5)))
                 .process(new TrackLargeDelta(5));
-        largeDelta.writeAsText("/home/jivesh/Alert.txt");
+        largeDelta.print();
 
         env.execute("Stock Analysis");
     }
@@ -116,9 +116,9 @@ public class StockAnalysis {
 
         @Override
         public void open(Configuration config) {
-            prevWindowMaxTrade = getRuntimeContext().getState(new ValueStateDescriptor<Double>("prev_max_trade", BasicTypeInfo.DOUBLE_TYPE_INFO, 0.0));
+            prevWindowMaxTrade = getRuntimeContext().getState(new ValueStateDescriptor<>("prev_max_trade", BasicTypeInfo.DOUBLE_TYPE_INFO));
 
-            prevWindowMaxVol = getRuntimeContext().getState(new ValueStateDescriptor<Integer>("prev_max_vol", BasicTypeInfo.INT_TYPE_INFO, 0));
+            prevWindowMaxVol = getRuntimeContext().getState(new ValueStateDescriptor<>("prev_max_vol", BasicTypeInfo.INT_TYPE_INFO));
         }
     }
 
@@ -155,7 +155,7 @@ public class StockAnalysis {
 
         @Override
         public void open(Configuration config) {
-            ValueStateDescriptor<Double> descriptor = new ValueStateDescriptor<Double>("prev_max", BasicTypeInfo.DOUBLE_TYPE_INFO, 0.0);
+            ValueStateDescriptor<Double> descriptor = new ValueStateDescriptor<>("prev_max", BasicTypeInfo.DOUBLE_TYPE_INFO);
             prevWindowMaxTrade = getRuntimeContext().getState(descriptor);
         }
     }
