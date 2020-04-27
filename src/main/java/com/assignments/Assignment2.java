@@ -22,7 +22,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Assignment 1
+ * Assignment 2
  * For every 10 second find out for US country
  * a.) total number of clicks on every website
  * b.) the website with maximum number of clicks.
@@ -106,7 +106,7 @@ public class Assignment2 {
             .print("Average Time by users on websites");
 
 
-        env.execute("IPStreamProcessor");
+        env.execute("Assignment2");
     }
 
     private static class DistinctUsers extends RichFlatMapFunction<Tuple2<String, String>, Tuple2<String, Integer>> {

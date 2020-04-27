@@ -1,3 +1,5 @@
+/src/main/resources/twitterTokens.properties
+
 .idea/
 target/
 *.iml

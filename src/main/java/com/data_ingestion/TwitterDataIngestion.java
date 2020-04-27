@@ -10,6 +10,9 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.connectors.twitter.TwitterSource;
 import org.apache.flink.util.Collector;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Properties;
 
 /* flink imports */
@@ -19,18 +22,15 @@ import java.util.Properties;
 public class TwitterDataIngestion {
     public static void main(String[] args) throws Exception {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        Properties twitterTokens = getTwitterTokens();
+        DataStream<String> twitterStream = env.addSource(new TwitterSource(twitterTokens));
 
-        Properties twitterCredentials = new Properties();
-        twitterCredentials.setProperty(TwitterSource.CONSUMER_KEY, "AJcUxpK8yRKE5yzZyteyVsUOk");
-        twitterCredentials.setProperty(TwitterSource.CONSUMER_SECRET, "8XzIDXlVLQANLsItrALwx3dHtyVvq4vrZu2OYSfhEqFsSEKI12");
-        twitterCredentials.setProperty(TwitterSource.TOKEN, "183234343-U6hOdLRXvWlDTkwaQxBRGEZjMa9sxbGAMGZ5ZfSL");
-        twitterCredentials.setProperty(TwitterSource.TOKEN_SECRET, "S5m6OEZ7q5QuVtgJV52SjhUaaV1Yna5QfQSOqt47Qt7Ze");
-
-        DataStream<String> twitterData = env.addSource(new TwitterSource(twitterCredentials));
-
-        twitterData.flatMap(new TweetParser()).print();
+        twitterStream
+            .flatMap(new TweetParser())
+            .print();
 
         env.execute("Twitter Example");
+        System.out.println("executed !");
     }
 
     public static class TweetParser implements FlatMapFunction<String, Tuple2<String, Integer>> {
@@ -47,10 +47,23 @@ public class TwitterDataIngestion {
 
             boolean hasText = node.has("text");
 
-            if (isEnglish && hasText) {
+//            if (isEnglish && hasText) {
                 String tweet = node.get("text").asText();
                 out.collect(new Tuple2<>(tweet, 1));
-            }
+//            }
         }
     }
+
+    private static Properties getTwitterTokens(){
+        Properties prop = new Properties();
+
+        try(InputStream input = new FileInputStream("src/main/resources/twitterTokens.properties")) {
+            prop.load(input);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+
+        return prop;
+    }
+
 }
